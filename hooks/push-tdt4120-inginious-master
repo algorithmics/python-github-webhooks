@@ -7,10 +7,11 @@ set -euo pipefail
 branch="master"
 
 # Path to the repository
-repopath="/var/www/INGInious/tasks/TDT4120"
+repopath="/var/www/INGInious/"
 
 s=`mktemp`
 t=`mktemp`
+ARCHIVE_SCRIPT=`mktemp`
 
 trap send_mail ERR
 trap cleanup EXIT
@@ -44,7 +45,7 @@ EOF
 }
 
 cleanup() {
-    rm $s $t
+    rm $s $t "${ARCHIVE_SCRIPT}"
 }
 
 # Ensure that our branch hasn't diverged from origin before pulling
@@ -53,3 +54,159 @@ stdbuf -oL bash -c                                                    \
        [ \`${git} name-rev --name-only HEAD\` == \"${branch}\" ];     \
        [ \`${git} cherry -v | wc -l\` -eq 0 ];                        \
        ${git} pull --rebase" > $t 2>&1
+
+# Creates temporary file containing a Python script to create archive
+# copies of the original subjects. These archived subjects will stay
+# available for the same time as the original subjects, but the tasks
+# will be open, with unlimited attempts, for as long as the course is
+# available. The script also changes the course title and adds some
+# message boxes to indicate that the tasks in the given course are
+# archived, and thus do not count towards being able to take the exam.
+# The script could be kept as a separate, permanent, file, but this
+# will break easier, due to the undefined execution context of the
+# script. The script is to be ran with Python3 and requires the PyYaml
+# library to be installed (pip3 install pyyaml).
+cat << EOF > "$ARCHIVE_SCRIPT"
+#!/bin/python3
+
+import yaml
+import sys
+import re
+import os
+from distutils.dir_util import copy_tree, remove_tree
+
+
+def update_archived_course(course_file_path):
+    """
+    Modifies the title of archived courses to indicate that the course is archived.
+    """
+
+    with open(course_file_path, "r") as course_file:
+        course = yaml.load(course_file, Loader=yaml.FullLoader)
+
+    # Modify course title to indicate that it is an archived course
+    course["name"] += " - Arkiv, trening etter fristen (ikke tellende)"
+
+    with open(course_file_path, "w") as course_file:
+        yaml.dump(course, course_file)
+
+
+def update_archived_task(task_file_path):
+    """
+    Modifies archived tasks to allow for unlimited attempts after the original deadline of the
+    original assignment deadline. Also modifies the context of the tasks to indicate that the
+    task is indeed an archived task.
+    """
+
+    with open(task_file_path, "r") as task_file:
+        task = yaml.load(task_file, Loader=yaml.FullLoader)
+
+    # Allow for unlimited attempts in the archive
+    task["submission_limit"]["amount"] = -1
+    task["submission_limit"]["period"] = -1
+
+    accessible = task["accessible"]
+    # Assumes that hidden task (accessible=False) should remain hidden and all tasks that are
+    # available forever (accessible=START or accessible=TRUE) should remain accessible in the
+    # archive. Otherwise, the task is made available forever in the archive after its given
+    # end time.
+    if isinstance(accessible, str) and "/" in accessible:
+        task["accessible"] = accessible.split("/")[-1]
+
+    context = task["context"]
+
+    # Remove the warning box about the number of attempts that can be found in some theory
+    # tasks in the 2019 course.
+    attempts_warning_pattern = \
+"""\.\. raw:: html[\n]+
+   <div class="alert alert-warning">
+   Du kan levere teoriøvingen \(trykke submit\) <b>maksimalt tre
+   ganger</b>\.
+   Etter dette vil det ikke lenger være mulig å levere øvingen\.
+   </div>"""
+
+    context = re.sub(attempts_warning_pattern, "", context)
+
+    # Replace the box about the number of required tasks by one written in past tense.
+    required_tasks_info_pattern = \
+"""\.\. raw:: html[\n]+
+   <div class="alert alert-info">
+   Du må besvare (?P<required>[0-9]+) av (?P<total>[0-9]+) oppgaver rett for å få denne
+   øvingen godkjent\.
+   For info om øvingsopplegget, se <a
+   class="alert-link"
+   href="https://algdat\.idi\.ntnu\.no/ovinger\.html">nettsidene</a>\.
+   Trenger du hjelp, så
+   <a href="https://algdat\.idi\.ntnu\.no/kontakt\.html"
+   class="alert-link">ta kontakt</a>\.
+   </div>"""
+
+    match = re.search(required_tasks_info_pattern, context)
+    if match:
+        required_tasks = match.group("required")
+        total_tasks = match.group("total")
+
+        context = re.sub(required_tasks_info_pattern, "", context)
+
+        context = f""".. raw:: html
+
+   <div class="alert alert-info"> Du måtte besvare {required_tasks} av {total_tasks} oppgaver rett for å få denne øvingen godkjent. For info om øvingsopplegget, se <a class="alert-link" href="https://algdat.idi.ntnu.no/ovinger.html">nettsidene</a>. Trenger du hjelp, så  <a href="https://algdat.idi.ntnu.no/kontakt.html" class="alert-link">ta kontakt</a>. </div>
+
+""" + context
+
+
+    # Include a message about the task belonging to an archived subject
+    context = """.. raw:: html
+
+   <div class="alert alert-danger">Denne øvingen er <b>arkivert</b>. Du kan øve deg på den, men den teller ikke for faktisk godkjenning av øvingsopplegget. </div>
+
+""" + context
+
+    # Update context with the new value
+    task["context"] = context
+
+    with open(task_file_path, "w") as task_file:
+        yaml.dump(task, task_file)
+
+
+def modify_archive(archive_path):
+    """
+    Iterates through the files in an archived course and updates course.yaml and task.yaml
+    files with the required properties of an archive.
+    """
+    for (directory_path, directory_names, file_names) in os.walk(archive_path):
+        for file_name in file_names:
+            if file_name == "course.yaml":
+                update_archived_course(os.path.join(directory_path, file_name))
+            elif file_name == "task.yaml":
+                update_archived_task(os.path.join(directory_path, file_name))
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage `python3 archive.py <tasks-directory>`")
+        sys.exit()
+
+    task_directory = sys.argv[1]
+
+    archive_regex = re.compile(".*-ARKIV$")
+
+    # Remove all already existing files for archives
+    for file_name in os.listdir(task_directory):
+        if re.match(archive_regex, file_name):
+            remove_tree(os.path.join(task_directory, file_name))
+
+    # Build archives from the bottom up
+    for file_name in os.listdir(task_directory):
+        directory_path = os.path.join(task_directory, file_name)
+        archive_directory_path = os.path.join(task_directory, file_name + "-ARKIV")
+
+        # There may be stray files, such as .gitignore files, that should be ignored
+        if os.path.isdir(directory_path):
+            copy_tree(directory_path, archive_directory_path)
+
+            modify_archive(archive_directory_path)
+EOF
+
+# Create archive subjects
+python3 "${ARCHIVE_SCRIPT}" "${repopath}/tasks"
