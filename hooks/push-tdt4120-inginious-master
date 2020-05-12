@@ -184,7 +184,7 @@ def modify_archive(archive_path):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage `python3 archive.py <tasks-directory>`")
+        print("Usage 'python3 archive.py <tasks-directory>'")
         sys.exit()
 
     task_directory = sys.argv[1]
