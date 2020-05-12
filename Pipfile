@@ -10,6 +10,7 @@ ipaddress = ">=1.0.22"
 requests = ">=2.22.0"
 Flask = ">=1.1.1"
 flup = ">=1.0.3"
+pyyaml = ">=5.3.1"
 
 [requires]
 python_version = "3.6"
