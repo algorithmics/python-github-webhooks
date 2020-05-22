@@ -88,7 +88,7 @@ def update_archived_course(course_file_path):
     course["name"] += " - Arkiv, trening etter fristen (ikke tellende)"
 
     with open(course_file_path, "w") as course_file:
-        yaml.dump(course, course_file)
+        yaml.dump(course, course_file, sort_keys=False)
 
 
 def update_archived_task(task_file_path):
@@ -166,7 +166,7 @@ def update_archived_task(task_file_path):
     task["context"] = context
 
     with open(task_file_path, "w") as task_file:
-        yaml.dump(task, task_file)
+        yaml.dump(task, task_file, sort_keys=False)
 
 
 def modify_archive(archive_path):
