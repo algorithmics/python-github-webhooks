@@ -127,7 +127,7 @@ def update_archived_task(task_file_path):
 
     context = re.sub(attempts_warning_pattern, "", context)
 
-    # Replace the box about the number of required tasks by one written in past tense.
+    # Replace the box about the number of required tasks by one written in past tense. (2019)
     required_tasks_info_pattern = \
 """\.\. raw:: html[\n]+
    <div class="alert alert-info">
@@ -153,6 +153,30 @@ def update_archived_task(task_file_path):
    <div class="alert alert-info"> Du måtte besvare {required_tasks} av {total_tasks} oppgaver rett for å få denne øvingen godkjent. For info om øvingsopplegget, se <a class="alert-link" href="https://algdat.idi.ntnu.no/ovinger.html">nettsidene</a>. Trenger du hjelp, så  <a href="https://algdat.idi.ntnu.no/kontakt.html" class="alert-link">ta kontakt</a>. </div>
 
 """ + context
+
+    # Replace the box about the number of required tasks by one written in past tense. (2020)
+    required_tasks_info_pattern = \
+"""\.\. raw:: html[\n]+
+   <div class="alert alert-info">
+      Du må besvare (?P<required>[0-9]+) av totalt (?P<total>[0-9]+) kode- og flervalgsoppgaver rett for å denne øvingen godkjent\. I tillegg må alle
+      refleksjonsoppgaver besvares\. For informasjon om øvingsopplegget, se <a class="alert-link"
+      href="https://algdat\.idi\.ntnu\.no/ovinger\.html">nettsidene</a>\. Trenger du hjelp, så
+      <a href="https://algdat\.idi\.ntnu\.no/kontakt\.html" class="alert-link">ta kontakt</a>\.
+   </div>"""
+
+    match = re.search(required_tasks_info_pattern, context)
+    if match:
+        required_tasks = match.group("required")
+        total_tasks = match.group("total")
+
+        context = re.sub(required_tasks_info_pattern, "", context)
+
+        context = f""".. raw:: html
+
+   <div class="alert alert-info"> Du måtte besvare {required_tasks} av totalt {total_tasks} kode- og flervalgsoppgaver rett for å få denne øvingen godkjent. I tillegg måtte alle refleksjonsoppgaver besvares. For informasjon om øvingsopplegget, se <a class="alert-link" href="https://algdat.idi.ntnu.no/ovinger.html">nettsidene</a>. Trenger du hjelp, så  <a href="https://algdat.idi.ntnu.no/kontakt.html" class="alert-link">ta kontakt</a>. </div>
+
+""" + context
+
 
 
     # Include a message about the task belonging to an archived subject
