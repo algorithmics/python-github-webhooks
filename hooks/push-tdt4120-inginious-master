@@ -85,7 +85,7 @@ def update_archived_course(course_file_path):
         course = yaml.load(course_file, Loader=yaml.FullLoader)
 
     # Modify course title to indicate that it is an archived course
-    course["name"] += " - Arkiv, trening etter fristen (ikke tellende)"
+    course["name"] = "Sandkasse (ikke tellende)" + course["name"][7:]
 
     with open(course_file_path, "w") as course_file:
         yaml.dump(course, course_file, sort_keys=False)
